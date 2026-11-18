@@ -1,3 +1,5 @@
+<p align="center"><img src="Resources/icon-1024.png" width="160" alt="Graphire Tablet icon"></p>
+
 # Graphire Tablet
 
 A small native **Apple Silicon** driver and menu-bar settings app for the original **Wacom Graphire** tablet (model **ET-0405-U**, USB `056A:0010`).
