@@ -99,3 +99,7 @@ Not yet tested: pressure in specific drawing apps, the eraser, the Graphire mous
 - [wacom-driver-fix](https://github.com/thenickdude/wacom-driver-fix), which kept the old Wacom drivers alive on modern macOS.
 
 Wacom and Graphire are trademarks of Wacom Co., Ltd. This project is not affiliated with Wacom.
+
+## License
+
+[MIT](LICENSE)
