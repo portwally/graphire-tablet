@@ -24,5 +24,7 @@
 	<true/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 Walter Tengler. MIT License.</string>
 </dict>
 </plist>

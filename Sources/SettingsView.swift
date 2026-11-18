@@ -42,6 +42,10 @@ struct SettingsView: View {
     @State private var displays = Displays.all()
     @State private var openAtLogin = LoginItem.isEnabled
 
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+    }
+
     private var connectionText: String {
         switch state.connection {
         case .searching: return "Not connected"
@@ -135,6 +139,16 @@ struct SettingsView: View {
                     Spacer()
                     Button("Restore Defaults") { settings.resetToDefaults() }
                 }
+            }
+
+            Section {
+                VStack(spacing: 2) {
+                    Text("Graphire Tablet \(appVersion)")
+                    Text("© 2026 Walter Tengler · MIT License")
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
             }
         }
         .formStyle(.grouped)
