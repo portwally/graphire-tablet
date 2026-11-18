@@ -45,6 +45,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// Opening the app again (Finder, Spotlight, `open`) shows the settings window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showSettings()
+        return true
+    }
+
     private func refreshPermission() {
         // CGPreflightPostEventAccess can stay stale until relaunch; AXIsProcessTrusted updates live.
         let granted = CGPreflightPostEventAccess() || AXIsProcessTrusted()

@@ -16,6 +16,8 @@ Wacom's last driver for this tablet (6.1.6) is Intel-only. On Apple Silicon Macs
 - **Graphire mouse (puck):** buttons and scroll wheel.
 - Menu-bar icon, **open at login**, and recovers after sleep and when the tablet is unplugged and plugged back in.
 
+<p align="center"><img src="screenshots/settings.png" width="420" alt="Graphire Tablet settings window"></p>
+
 ## Requirements
 
 - Apple Silicon Mac, macOS 13 or later (developed on macOS 27).
@@ -52,6 +54,7 @@ Click the **pencil icon** in the menu bar:
 - **Settings…:** mode, screen, proportions, smoothing, tip feel, pressure curve, side switch, open at login.
 - **Open at Login:** on by default after first launch.
 - The menu warns you if the Wacom driver is still running.
+- Opening the app again (Finder, Spotlight or Launchpad) also opens Settings.
 
 Hover the pen to move the pointer, and touch the tablet to click. Pressure is sent only while the tip is down.
 
