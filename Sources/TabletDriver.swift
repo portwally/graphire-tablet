@@ -11,9 +11,12 @@ final class TabletState: ObservableObject {
     @Published var tool: String = "—"
     @Published var pressure: Double = 0
     @Published var accessibilityGranted = false
+    @Published var modelName: String = ""
+    @Published var modelTested = true
+    @Published var hasPad = false
 }
 
-/// User-space driver for the Wacom Graphire (ET-0405-U, USB 056A:0010).
+/// User-space driver for Wacom tablets using the Graphire protocol (see `TabletModel.all`).
 ///
 /// Protocol (from the Linux `wacom_graphire_irq`, confirmed on this tablet):
 ///   - Feature report 2 = [0x02, 0x02] switches the tablet from mouse mode to tablet mode.
@@ -22,14 +25,11 @@ final class TabletState: ObservableObject {
 ///            bit0 tip / left, bit1 lower switch / right, bit2 upper switch / middle
 ///       d[2..3] X (LE, 0...10206), d[4..5] Y (LE, 0...7422)
 ///       pen:   pressure = d[6] | (d[7] & 3) << 8  (0...511)
-///       mouse: wheel = -(Int8)d[6]
+///       mouse: wheel = -(Int8)d[6]  (Graphire4: (d[7] & 4) - (d[7] & 3))
+///   - Graphire4 pad, in every report: d[7] bit6 "back" button, bit7 "forward" button,
+///       bits3-5 signed wheel delta.
 final class TabletDriver {
-    static let vendorID = 0x056A
-    static let productID = 0x0010
-    static let maxX = 10206.0
-    static let maxY = 7422.0
-    static let maxPressure = 511.0
-    /// Points moved per tablet count at mouse speed 1.0 (tablet is ~2032 counts/inch).
+    /// Points moved per tablet count at mouse speed 1.0, for an 80 counts/mm tablet.
     static let relativeScale = 0.15
 
     enum Tool { case pen, eraser, mouse }
@@ -39,6 +39,9 @@ final class TabletDriver {
     private let source = CGEventSource(stateID: .hidSystemState)
     private var manager: IOHIDManager?
     private var device: IOHIDDevice?
+    private var model = TabletModel.all[0]
+    private var padBackHeld = false
+    private var padForwardHeld = false
     private var observers: [NSObjectProtocol] = []
     private var cancellables = Set<AnyCancellable>()
 
@@ -77,8 +80,10 @@ final class TabletDriver {
     func start() {
         let m = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
         manager = m
-        IOHIDManagerSetDeviceMatching(m, [kIOHIDVendorIDKey: Self.vendorID,
-                                          kIOHIDProductIDKey: Self.productID] as CFDictionary)
+        let matches = TabletModel.all.map {
+            [kIOHIDVendorIDKey: TabletModel.vendorID, kIOHIDProductIDKey: $0.productID] as CFDictionary
+        }
+        IOHIDManagerSetDeviceMatchingMultiple(m, matches as CFArray)
         let ctx = Unmanaged.passUnretained(self).toOpaque()
         IOHIDManagerRegisterDeviceMatchingCallback(m, { ctx, _, _, dev in
             Unmanaged<TabletDriver>.fromOpaque(ctx!).takeUnretainedValue().attached(dev)
@@ -117,8 +122,14 @@ final class TabletDriver {
     }
 
     private func attached(_ dev: IOHIDDevice) {
-        Log.write("tablet attached")
+        let pid = (IOHIDDeviceGetProperty(dev, kIOHIDProductIDKey as CFString) as? NSNumber)?.intValue ?? 0
+        model = TabletModel.find(productID: pid) ?? TabletModel.all[0]
+        Log.write(String(format: "tablet attached: %@ (056A:%04X)", model.name, pid))
         device = dev
+        mappingRect = nil
+        state.modelName = "Wacom " + model.name
+        state.modelTested = model.tested
+        state.hasPad = model.hasPad
         state.connection = .connected
         setTabletMode()
     }
@@ -127,6 +138,8 @@ final class TabletDriver {
         Log.write("tablet removed")
         if inProximity { leaveProximity() }
         device = nil
+        state.modelName = ""
+        state.hasPad = false
         state.connection = .searching
     }
 
@@ -165,6 +178,7 @@ final class TabletDriver {
     }
 
     private func process(_ d: [UInt8]) {
+        if model.hasPad { processPad(d[7]) }
         guard d[1] & 0x80 != 0 else {
             if inProximity { leaveProximity() }
             return
@@ -183,14 +197,14 @@ final class TabletDriver {
 
         var raw = CGPoint(x: Double(UInt16(d[2]) | UInt16(d[3]) << 8),
                           y: Double(UInt16(d[4]) | UInt16(d[5]) << 8))
-        if settings.leftHanded { raw = CGPoint(x: Self.maxX - raw.x, y: Self.maxY - raw.y) }
+        if settings.leftHanded { raw = CGPoint(x: model.maxX - raw.x, y: model.maxY - raw.y) }
         rawPoint = raw
 
         if tool == .mouse { processMouse(d, raw) } else { processPen(d, raw) }
     }
 
     private func processPen(_ d: [UInt8], _ raw: CGPoint) {
-        let p = min(1, Double(Int(d[6]) | Int(d[7] & 0x03) << 8) / Self.maxPressure)
+        let p = min(1, Double(Int(d[6]) | Int(d[7] & 0x03) << 8) / model.maxPressure)
         let touching = d[1] & 0x01 != 0
         let lower = d[1] & 0x02 != 0
         let upper = d[1] & 0x04 != 0
@@ -220,7 +234,9 @@ final class TabletDriver {
         let left = d[1] & 0x01 != 0
         let right = d[1] & 0x02 != 0
         let middle = (d[1] >> 5) & 3 == 2 && d[1] & 0x04 != 0
-        let wheel = -Int(Int8(bitPattern: d[6]))
+        let wheel = model.hasPad
+            ? (Int(d[7] & 0x04) - Int(d[7] & 0x03)).signum()
+            : -Int(Int8(bitPattern: d[6]))
         pressure = 0
         buttonMask = 0
 
@@ -238,6 +254,59 @@ final class TabletDriver {
         if wheel != 0 {
             CGEvent(scrollWheelEvent2Source: source, units: .line, wheelCount: 1,
                     wheel1: Int32(wheel), wheel2: 0, wheel3: 0)?.post(tap: .cghidEventTap)
+        }
+    }
+
+    // MARK: - Graphire4 pad
+
+    private func processPad(_ b: UInt8) {
+        let back = b & 0x40 != 0
+        let forward = b & 0x80 != 0
+        if back != padBackHeld { padBackHeld = back; perform(settings.padBackButton, pressed: back) }
+        if forward != padForwardHeld { padForwardHeld = forward; perform(settings.padForwardButton, pressed: forward) }
+        // Bits 3-5: signed 3-bit wheel delta (Linux: ((b & 0x18) >> 3) - ((b & 0x20) >> 3)).
+        let wheel = Int((b & 0x18) >> 3) - Int((b & 0x20) >> 3)
+        if wheel != 0 { padWheel(wheel) }
+    }
+
+    private func padWheel(_ delta: Int) {
+        switch settings.padWheel {
+        case .disabled:
+            return
+        case .scroll, .zoom:
+            guard let e = CGEvent(scrollWheelEvent2Source: source, units: .line, wheelCount: 1,
+                                  wheel1: Int32(delta), wheel2: 0, wheel3: 0) else { return }
+            if settings.padWheel == .zoom { e.flags = .maskCommand }
+            e.post(tap: .cghidEventTap)
+        }
+    }
+
+    private func perform(_ action: PadAction, pressed: Bool) {
+        if !inProximity { cursor = CGEvent(source: nil)?.location ?? cursor }
+        switch action {
+        case .none:
+            break
+        case .back, .forward:
+            let button = CGMouseButton(rawValue: action == .back ? 3 : 4)!
+            post(pressed ? .otherMouseDown : .otherMouseUp, button: button, clickState: 1)
+        case .rightClick:
+            post(pressed ? .rightMouseDown : .rightMouseUp, button: .right, clickState: 1)
+        case .middleClick:
+            post(pressed ? .otherMouseDown : .otherMouseUp, button: .center, clickState: 1)
+        case .doubleClick:
+            guard pressed else { return }
+            for n: Int64 in [1, 2] {
+                post(.leftMouseDown, button: .left, clickState: n)
+                post(.leftMouseUp, button: .left, clickState: n)
+            }
+        case .undo, .redo:
+            guard pressed else { return }
+            let flags: CGEventFlags = action == .undo ? .maskCommand : [.maskCommand, .maskShift]
+            for down in [true, false] {
+                let e = CGEvent(keyboardEventSource: source, virtualKey: 6 /* Z */, keyDown: down)
+                e?.flags = flags
+                e?.post(tap: .cghidEventTap)
+            }
         }
     }
 
@@ -271,7 +340,7 @@ final class TabletDriver {
         guard let e = CGEvent(source: source) else { return }
         e.type = .tabletProximity
         e.location = cursor
-        e.setIntegerValueField(.tabletProximityEventVendorID, value: Int64(Self.vendorID))
+        e.setIntegerValueField(.tabletProximityEventVendorID, value: Int64(TabletModel.vendorID))
         e.setIntegerValueField(.tabletProximityEventTabletID, value: 1)
         e.setIntegerValueField(.tabletProximityEventPointerID, value: tool == .eraser ? 1 : 0)
         e.setIntegerValueField(.tabletProximityEventDeviceID, value: proximityDeviceID)
@@ -371,7 +440,7 @@ final class TabletDriver {
     private func absolutePoint(_ raw: CGPoint) -> CGPoint {
         let rect: CGRect
         if let r = mappingRect { rect = r } else { rect = Displays.rect(for: settings.displayUUID); mappingRect = rect }
-        var areaW = Self.maxX, areaH = Self.maxY
+        var areaW = model.maxX, areaH = model.maxY
         if settings.forceProportions, rect.height > 0 {
             let screenAspect = rect.width / rect.height
             if screenAspect > areaW / areaH { areaH = areaW / screenAspect } else { areaW = areaH * screenAspect }
@@ -384,7 +453,7 @@ final class TabletDriver {
     private func relativePoint(_ raw: CGPoint) -> CGPoint {
         defer { lastRaw = raw }
         guard let last = lastRaw else { return cursor }
-        let scale = Self.relativeScale * settings.mouseSpeed
+        let scale = Self.relativeScale * settings.mouseSpeed * 80 / model.resolution
         var p = CGPoint(x: cursor.x + (raw.x - last.x) * scale, y: cursor.y + (raw.y - last.y) * scale)
         let b = Displays.desktopBounds()
         p.x = min(max(p.x, b.minX), b.maxX - 1)

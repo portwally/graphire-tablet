@@ -2,9 +2,9 @@
 
 # Graphire Tablet
 
-A small native **Apple Silicon** driver and menu-bar settings app for the original **Wacom Graphire** tablet (model **ET-0405-U**, USB `056A:0010`).
+A small native **Apple Silicon** driver and menu-bar settings app for the **Wacom Graphire** family of USB tablets: Graphire, Graphire2, Graphire3, Graphire4, and the Volito, PenPartner2 and early Bamboo models that use the same protocol.
 
-Wacom's last driver for this tablet (6.1.6) is Intel-only. On Apple Silicon Macs it runs only through Rosetta 2, which Apple is phasing out after macOS 27, and its settings panel no longer appears in System Settings. This app replaces the whole driver with about 800 lines of Swift. It runs natively and has no kernel extension.
+Wacom's last drivers for these tablets are Intel-only. On Apple Silicon Macs they run only through Rosetta 2, which Apple is phasing out after macOS 27, and their settings panel no longer appears in System Settings. This app replaces the whole driver with about 1,000 lines of Swift. It runs natively and has no kernel extension.
 
 ## Features
 
@@ -16,6 +16,7 @@ Wacom's last driver for this tablet (6.1.6) is Intel-only. On Apple Silicon Macs
 - **Side switch:** assign the upper and lower halves to right click, double click, middle click, left click, or disabled.
 - **Left-handed mode** (tablet rotated 180°) and **jitter smoothing**.
 - **Graphire mouse (puck):** buttons and scroll wheel.
+- **Graphire4 tablet buttons and wheel:** assign each button to back, forward, undo, redo or a click; the wheel scrolls or zooms.
 - Menu-bar icon, **open at login**, and recovers after sleep and when the tablet is unplugged and plugged back in.
 
 <p align="center"><img src="screenshots/settings.png" width="420" alt="Graphire Tablet settings window"></p>
@@ -23,8 +24,23 @@ Wacom's last driver for this tablet (6.1.6) is Intel-only. On Apple Silicon Macs
 ## Requirements
 
 - Apple Silicon Mac, macOS 13 or later (developed on macOS 27).
-- Wacom Graphire ET-0405-U (USB). Other Graphire models use different USB IDs and are not supported yet.
+- A supported tablet, connected by USB (see below).
 - **The Wacom driver must not be running**, because only one program can control the tablet at a time. See [Disabling the Wacom driver](#disabling-the-wacom-driver).
+
+## Supported tablets
+
+| Model | USB ID | Status |
+|---|---|---|
+| Graphire (ET-0405-U) | `056A:0010` | ✅ tested |
+| Graphire2 4x5 / 5x7 | `0011` / `0012` | untested |
+| Graphire3 4x5 / 6x8 | `0013` / `0014` | untested |
+| Graphire4 4x5 / 6x8 (with tablet buttons and wheel) | `0015` / `0016` | untested |
+| Bamboo1, Bamboo1 4x6 / 5x8 / Medium | `0069` / `006A` / `006B` / `0019` | untested |
+| Volito, Volito2 4x5 / 2x3, PenStation2, PenPartner2 | `0060`–`0064` | untested |
+
+All of these use the same data format (taken from the Linux kernel driver); only tablet size, pressure range and resolution differ. Untested models should work, but if you have one, please [open an issue](../../issues) to say whether it does. The Graphire Bluetooth model, BambooFun, later Bamboos and Intuos tablets use other protocols and are **not** supported.
+
+To see your tablet's USB ID: **Apple menu → About This Mac → More Info → System Report → USB**, look for *Product ID*.
 
 ## Install
 
@@ -85,6 +101,7 @@ launchctl bootstrap gui/$(id -u) /Library/LaunchAgents/com.wacom.wacomtablet.pli
 | File | Purpose |
 |---|---|
 | `Sources/TabletDriver.swift` | USB HID access, report parsing, event posting |
+| `Sources/Models.swift` | Supported tablets: USB IDs, size, pressure, resolution |
 | `Sources/Settings.swift` | Settings saved in UserDefaults |
 | `Sources/SettingsView.swift` | SwiftUI settings window, login item |
 | `Sources/Displays.swift` | Display lookup and screen rectangles |
@@ -95,8 +112,8 @@ The log is at `~/Library/Logs/GraphireTablet.log`.
 
 ## Status
 
-Tested: pen tracking, tip click, side switch, screen mapping (built-in and external display).
-Not yet tested: pressure in specific drawing apps, the eraser, the Graphire mouse. Issues and pull requests are welcome.
+Tested on a Graphire (ET-0405-U): pen tracking, tip click, side switch, screen mapping (built-in and external display).
+Not yet tested: pressure in specific drawing apps, the eraser, the Graphire mouse, and all other models. Issues and pull requests are welcome.
 
 ## Credits
 

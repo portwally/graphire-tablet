@@ -45,7 +45,8 @@ struct SettingsView: View {
     private var connectionText: String {
         switch state.connection {
         case .searching: return "Not connected"
-        case .connected: return "Connected"
+        case .connected:
+            return state.modelName.isEmpty ? "Connected" : state.modelName + (state.modelTested ? "" : " (untested model)")
         case .failed(let msg): return msg
         }
     }
@@ -109,6 +110,20 @@ struct SettingsView: View {
                 }
                 Picker("Lower button", selection: $settings.lowerButton) {
                     ForEach(ButtonAction.allCases) { Text($0.title).tag($0) }
+                }
+            }
+
+            if state.hasPad {
+                Section("Tablet Buttons") {
+                    Picker("Left button", selection: $settings.padBackButton) {
+                        ForEach(PadAction.allCases) { Text($0.title).tag($0) }
+                    }
+                    Picker("Right button", selection: $settings.padForwardButton) {
+                        ForEach(PadAction.allCases) { Text($0.title).tag($0) }
+                    }
+                    Picker("Wheel", selection: $settings.padWheel) {
+                        ForEach(PadWheelAction.allCases) { Text($0.title).tag($0) }
+                    }
                 }
             }
 
